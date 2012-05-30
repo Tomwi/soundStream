@@ -69,6 +69,7 @@ void copySamples(short * inBuf, int deinterleave, int samples);
 int getPlayingSample(void);
 int getStreamState(void);
 void setStreamState(int state);
+short * getoutBuf(void);
 
 void _deInterleave(short *in, short *out, int samples);
 

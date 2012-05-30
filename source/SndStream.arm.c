@@ -244,3 +244,7 @@ FEOS_EXPORT int getStreamState(void){
 FEOS_EXPORT void setStreamState(int state){
 	activeStream.state = state;
 }
+
+FEOS_EXPORT short * getoutBuf(void){
+	return outBuf.buffer;
+}
