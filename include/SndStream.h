@@ -7,7 +7,7 @@
 #include <stdlib.h>
 
 /* Timing */
-#define BUS_CLOCK   		(33513982)
+#define BUS_CLOCK   		(0x2000000)
 #define TICKS_PER_SAMP(n)	((BUS_CLOCK)/(n))
 #define TIMER_ENABLE		(1<<7)
 #define TIMER_CASCADE   	(1<<2)
