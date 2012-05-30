@@ -1,10 +1,9 @@
-build/*
+build/
 *.elf
 *.dbg
 *.fx2
 *.sh
 *.a
-sndDriver/build/*
 *.tags*
 *.workspace*
 
