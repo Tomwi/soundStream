@@ -1,7 +1,7 @@
 #include "SndStream.h"
 
 int fifoCh;
-char arm7Module[] = "/data/FeOS/arm7/sndDriver.fx2";
+char arm7Module[] = "/data/FeOS/arm7/sndStreamStub.fx2";
 instance_t arm7_sndModule;
 
 s16 mainBuf[MAX_N_CHANS * STREAM_BUF_SIZE * 2];
