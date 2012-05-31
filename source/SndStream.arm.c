@@ -7,9 +7,8 @@ instance_t arm7_sndModule;
 s16 mainBuf[MAX_N_CHANS * STREAM_BUF_SIZE * 2];
 AUDIO_BUFFER outBuf = {(s16*)&mainBuf, 0, 0,};
 AUDIO_BUFFER workBuf = {(s16*)&mainBuf[MAX_N_CHANS * STREAM_BUF_SIZE], 0, 0,};
-
-char mixer_status;
 AUDIO_STREAM activeStream;
+
 hword_t  sampleCount[2];
 
 FIFO_AUD_MSG msg;
@@ -99,7 +98,7 @@ FEOS_EXPORT void pauseStream(void)
 		memcpy(outBuf.buffer+STREAM_BUF_SIZE, workBuf.buffer+STREAM_BUF_SIZE, size*2);
 
 	outBuf.bufOff = size;
-	mixer_status = STREAM_PAUSE;
+	activeStream.state = STREAM_PAUSE;
 	DC_FlushAll();
 	FeOS_DrainWriteBuffer();
 }
@@ -111,7 +110,7 @@ FEOS_EXPORT void resumeStream(void)
 
 	FeOS_TimerWrite(0, ((1<<16)-TICKS_PER_SAMP(activeStream.frequency))|((TIMER_ENABLE)<<16));
 	FeOS_TimerWrite(1, ((TIMER_CASCADE|TIMER_ENABLE)<<16));
-	mixer_status = STREAM_PLAY;
+	activeStream.state = STREAM_PLAY;
 }
 
 FEOS_EXPORT void stopStream()
