@@ -1,21 +1,8 @@
 #include <nds.h>
-
-/* Message types */
-#define FIFO_AUDIO_START	1
-#define FIFO_AUDIO_STOP		2
-#define FIFO_AUDIO_PAUSE	3
-#define FIFO_AUDIO_RESUME	4
-
-typedef struct {
-	int type;			// kind of audio message
-	unsigned int property;	// (tmr_value & (n_Channels << 16))
-	int bufLen;		// Length of the buffer for just one channel
-	void * buffer;	// pointer to sample buffer
-} FIFO_AUD_MSG;
+#include "fifo.h"
 
 FIFO_AUD_MSG  msg;
 int fifoChan;
-
 int chanReg[2];
 
 void FifoMsgHandler(int num_bytes, void *userdata)

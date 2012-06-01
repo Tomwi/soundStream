@@ -15,12 +15,6 @@
 #define STREAM_BUF_SIZE   	(8192)
 #define MAX_N_CHANS			(2)
 
-/* Message types */
-#define FIFO_AUDIO_START  (1)
-#define FIFO_AUDIO_STOP   (2)
-#define FIFO_AUDIO_PAUSE  (3)
-#define FIFO_AUDIO_RESUME (4)
-
 /* Stream status */
 enum STREAM_STATUS {
     STREAM_INITED,
@@ -36,13 +30,6 @@ enum AUDIO_FLAGS {
 };
 
 typedef struct {
-	int type;				// kind of audio message
-	unsigned int property;	// (tmr_value & (n_Channels << 16))
-	int bufLen;				// Length of the buffer for just one channel
-	s16 * buffer;			// pointer to sample buffer
-} FIFO_AUD_MSG;
-
-typedef struct {
 	s16 * buffer;
 	int bufLen;
 	int bufOff;
@@ -55,7 +42,7 @@ typedef struct {
 } AUDIO_INFO;
 
 typedef struct {
-	int (*onOpen)(char* , AUDIO_INFO*, void** context);
+	int (*onOpen)(const char* , AUDIO_INFO*, void** context);
 	int (*onRead)(int length, short * buf, void * context);
 	void (*onClose)(void * context);
 	void * context;
@@ -79,7 +66,7 @@ int initSoundStreamer(void);
 void deinitSoundStreamer(void);
 
 int createStream(AUDIO_CALLBACKS * cllbck);
-int startStream(char* , int idx);
+int startStream(const char* , int idx);
 void pauseStream(void);
 void resumeStream(void);
 void stopStream();

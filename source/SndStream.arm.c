@@ -1,5 +1,5 @@
 #include "SndStream.h"
-
+#include "fifo.h"
 int fifoCh;
 char arm7Module[] = "/data/FeOS/arm7/sndStreamStub.fx2";
 instance_t arm7_sndModule;
@@ -69,7 +69,7 @@ FEOS_EXPORT int createStream(AUDIO_CALLBACKS * cllbck)
 	return -1;
 }
 
-FEOS_EXPORT int startStream(char* inf, int idx)
+FEOS_EXPORT int startStream(const char* inf, int idx)
 {
 	activeIdx = idx;
 	activeStream = &streamLst[activeIdx];
