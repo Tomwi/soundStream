@@ -22,14 +22,18 @@
 #define FIFO_AUDIO_RESUME (4)
 
 /* Stream status */
-enum STREAM_STATUS{
-	STREAM_INITED,
-	STREAM_PLAY,
-	STREAM_STOP,
-	STREAM_PAUSE,
-	STREAM_WAIT,
+enum STREAM_STATUS {
+    STREAM_INITED,
+    STREAM_PLAY,
+    STREAM_STOP,
+    STREAM_PAUSE,
+    STREAM_WAIT,
 };
- 
+
+enum AUDIO_FLAGS {
+    AUDIO_INTERLEAVED = (1<<0),
+    AUDIO_16BIT		  = (1<<1),	// 8BIT if not set
+};
 
 typedef struct {
 	int type;				// kind of audio message
@@ -47,22 +51,41 @@ typedef struct {
 typedef struct {
 	unsigned int frequency;
 	unsigned int channelCount;
-	unsigned int smpNc;
-	int (*writeSamples)(int length, short * buf);
+	int flags;
+} AUDIO_INFO;
+
+typedef struct {
+	int (*onOpen)(char* , AUDIO_INFO*, void** context);
+	int (*onRead)(int length, short * buf, void * context);
+	void (*onClose)(void * context);
+	void * context;
+} AUDIO_CALLBACKS;
+
+typedef struct {
 	int state;
+	unsigned int smpNc;
+	AUDIO_CALLBACKS* cllbcks;
+	AUDIO_INFO  inf;
 } AUDIO_STREAM;
 
-#define STREAM_ERR     (-1)
-#define STREAM_EOF     (-2)
+enum ERROR{
+STREAM_ERR = -1,
+STREAM_EOF = -2,
+STREAM_UNDERRUN = -3,
+STREAM_INSF = -4,
+};
 
 int initSoundStreamer(void);
 void deinitSoundStreamer(void);
 
-int startStream(int freq, int nChans, int (*writeCallback)(int length, short * buf));
+int createStream(AUDIO_CALLBACKS * cllbck);
+int startStream(char* , int idx);
 void pauseStream(void);
 void resumeStream(void);
 void stopStream();
 int updateStream(void);
+void destroyStream(int idx);
+
 void preFill(void);
 void deFragReadbuf(unsigned char * readBuf, unsigned char ** readOff, int dataLeft);
 void copySamples(short * inBuf, int deinterleave, int samples);
