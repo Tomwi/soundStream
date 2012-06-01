@@ -35,7 +35,6 @@ FEOS_EXPORT int initSoundStreamer(void)
 
 	if(arm7_sndModule) {
 		fifoSetValue32Handler(fifoCh, fifoValHandler, NULL);
-		activeStream->state = STREAM_STOP;
 		return 1;
 	}
 	return 0;
