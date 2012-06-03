@@ -1,5 +1,6 @@
 #include "SndStream.h"
 #include "fifo.h"
+
 int fifoCh;
 char arm7Module[] = "/data/FeOS/arm7/sndStreamStub.fx2";
 instance_t arm7_sndModule;
