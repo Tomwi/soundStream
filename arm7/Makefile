@@ -28,7 +28,7 @@ TARGET        := sndStreamStub
 BUILD         := build
 SOURCES       := source
 DATA          := data
-INCLUDES      := include
+INCLUDES      := include ../common/include
 
 CONF_DEFINES =
 CONF_ARM7 = 1
