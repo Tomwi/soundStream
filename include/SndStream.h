@@ -75,7 +75,7 @@ void destroyStream(int idx);
 
 void preFill(void);
 void deFragReadbuf(unsigned char * readBuf, unsigned char ** readOff, int dataLeft);
-void copySamples(short * inBuf, int deinterleave, int samples);
+void copySamples(short * inBuf, int samples);
 int getPlayingSample(void);
 int getStreamState(void);
 void setStreamState(int state);

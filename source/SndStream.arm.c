@@ -184,7 +184,7 @@ decode:
 			break;
 		default:
 			if(ret > 0) {
-				copySamples(workBuf.buffer, 1, ret);
+				copySamples(workBuf.buffer, ret);
 				activeStream->smpNc -= ret;
 				if(activeStream->smpNc>0)
 					goto decode;
@@ -203,7 +203,7 @@ void preFill(void)
 		if(ret<=0) {
 			break;
 		}
-		copySamples(workBuf.buffer, 1, ret);
+		copySamples(workBuf.buffer, ret);
 		activeStream->smpNc -=ret;
 	}
 }
@@ -214,7 +214,7 @@ FEOS_EXPORT void deFragReadbuf(unsigned char * readBuf, unsigned char ** readOff
 	*readOff = readBuf;
 }
 
-FEOS_EXPORT void copySamples(short * inBuf, int deinterleave, int samples)
+void copySamples(short * inBuf, int samples)
 {
 	// Deinterleave will fail otherwise (deinterleaves 4n samples)
 	samples &= (~3); // bic
@@ -228,7 +228,7 @@ copy:
 		switch(activeStream->inf.channelCount) {
 			// Right channel
 		case 2:
-			if(!deinterleave)
+			if(!(activeStream->inf.flags & AUDIO_INTERLEAVED))
 				memcpy(&outBuf.buffer[STREAM_BUF_SIZE+outBuf.bufOff], &inBuf[toEnd], toEnd*2);
 			// has to be stereo
 			else {
