@@ -30,6 +30,62 @@ void fifoValHandler(u32 value32, void *userdata)
 	}
 }
 
+void copySamples(short * inBuf, int samples)
+{
+	// Deinterleave will fail otherwise (deinterleaves 4n samples)
+	samples &= (~3); // bic
+	int toEnd = ((outBuf.bufOff + samples) > STREAM_BUF_SIZE? STREAM_BUF_SIZE - outBuf.bufOff : samples);
+	toEnd  	&= (~3);
+
+copy:
+
+	if(toEnd) {
+
+		switch(activeStream->inf.channelCount) {
+			// Right channel
+		case 2:
+			if(!(activeStream->inf.flags & AUDIO_INTERLEAVED))
+				memcpy(&outBuf.buffer[STREAM_BUF_SIZE+outBuf.bufOff], &inBuf[toEnd], toEnd*2);
+			// has to be stereo
+			else {
+				_deInterleave(inBuf, &outBuf.buffer[outBuf.bufOff], toEnd);
+				break;
+			}
+			//Left channel
+		case 1:
+			memcpy(&outBuf.buffer[outBuf.bufOff], inBuf, toEnd*2);
+			break;
+		}
+	}
+
+	samples -= toEnd;
+	/* There was a split */
+	if(samples) {
+		outBuf.bufOff = 0;
+		inBuf += toEnd*activeStream->inf.channelCount;
+		toEnd = samples;
+		goto copy;
+	}
+	outBuf.bufOff += toEnd;
+
+	DC_FlushAll();
+	FeOS_DrainWriteBuffer();
+}
+
+void preFill(void)
+{
+	activeStream->smpNc = STREAM_BUF_SIZE-outBuf.bufOff;
+	int ret = 0;
+	while(activeStream->smpNc > 0) {
+		ret = activeStream->cllbcks->onRead(activeStream->smpNc, workBuf.buffer, &activeStream->cllbcks->context);
+		if(ret<=0) {
+			break;
+		}
+		copySamples(workBuf.buffer, ret);
+		activeStream->smpNc -=ret;
+	}
+}
+
 FEOS_EXPORT int initSoundStreamer(void)
 {
 	arm7_sndModule= FeOS_LoadARM7(arm7Module, &fifoCh);
@@ -194,66 +250,10 @@ decode:
 	return 1;
 }
 
-void preFill(void)
-{
-	activeStream->smpNc = STREAM_BUF_SIZE-outBuf.bufOff;
-	int ret = 0;
-	while(activeStream->smpNc > 0) {
-		ret = activeStream->cllbcks->onRead(activeStream->smpNc, workBuf.buffer, &activeStream->cllbcks->context);
-		if(ret<=0) {
-			break;
-		}
-		copySamples(workBuf.buffer, ret);
-		activeStream->smpNc -=ret;
-	}
-}
-
 FEOS_EXPORT void deFragReadbuf(unsigned char * readBuf, unsigned char ** readOff, int dataLeft)
 {
 	memmove(readBuf, *readOff, dataLeft);
 	*readOff = readBuf;
-}
-
-void copySamples(short * inBuf, int samples)
-{
-	// Deinterleave will fail otherwise (deinterleaves 4n samples)
-	samples &= (~3); // bic
-	int toEnd = ((outBuf.bufOff + samples) > STREAM_BUF_SIZE? STREAM_BUF_SIZE - outBuf.bufOff : samples);
-	toEnd  	&= (~3);
-
-copy:
-
-	if(toEnd) {
-
-		switch(activeStream->inf.channelCount) {
-			// Right channel
-		case 2:
-			if(!(activeStream->inf.flags & AUDIO_INTERLEAVED))
-				memcpy(&outBuf.buffer[STREAM_BUF_SIZE+outBuf.bufOff], &inBuf[toEnd], toEnd*2);
-			// has to be stereo
-			else {
-				_deInterleave(inBuf, &outBuf.buffer[outBuf.bufOff], toEnd);
-				break;
-			}
-			//Left channel
-		case 1:
-			memcpy(&outBuf.buffer[outBuf.bufOff], inBuf, toEnd*2);
-			break;
-		}
-	}
-
-	samples -= toEnd;
-	/* There was a split */
-	if(samples) {
-		outBuf.bufOff = 0;
-		inBuf += toEnd*activeStream->inf.channelCount;
-		toEnd = samples;
-		goto copy;
-	}
-	outBuf.bufOff += toEnd;
-
-	DC_FlushAll();
-	FeOS_DrainWriteBuffer();
 }
 
 FEOS_EXPORT int getPlayingSample(void)
