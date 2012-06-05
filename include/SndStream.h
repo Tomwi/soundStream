@@ -73,7 +73,6 @@ void stopStream();
 int updateStream(void);
 void destroyStream(int idx);
 
-void deFragReadbuf(unsigned char * readBuf, unsigned char ** readOff, int dataLeft);
 int getPlayingSample(void);
 int getStreamState(void);
 void setStreamState(int state);

@@ -250,12 +250,6 @@ decode:
 	return 1;
 }
 
-FEOS_EXPORT void deFragReadbuf(unsigned char * readBuf, unsigned char ** readOff, int dataLeft)
-{
-	memmove(readBuf, *readOff, dataLeft);
-	*readOff = readBuf;
-}
-
 FEOS_EXPORT int getPlayingSample(void)
 {
 	return (((outBuf.bufOff + activeStream->smpNc) & (STREAM_BUF_SIZE-1)));
