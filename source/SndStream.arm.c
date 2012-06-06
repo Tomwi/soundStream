@@ -1,8 +1,9 @@
 #include "SndStream.h"
 #include "fifo.h"
 
+#define ARM7_MODULE_PATH "/data/FeOS/arm7/sndStreamStub.fx2"
+
 int fifoCh;
-char arm7Module[] = "/data/FeOS/arm7/sndStreamStub.fx2";
 instance_t arm7_sndModule;
 
 s16 mainBuf[MAX_N_CHANS * STREAM_BUF_SIZE * 2];
@@ -88,7 +89,7 @@ void preFill(void)
 
 FEOS_EXPORT int initSoundStreamer(void)
 {
-	arm7_sndModule= FeOS_LoadARM7(arm7Module, &fifoCh);
+	arm7_sndModule= FeOS_LoadARM7(ARM7_MODULE_PATH, &fifoCh);
 
 	if(arm7_sndModule) {
 		fifoSetValue32Handler(fifoCh, fifoValHandler, NULL);
@@ -292,4 +293,8 @@ FEOS_EXPORT void destroyStream(int idx)
 		}
 	}
 
+}
+
+FEOS_EXPORT AUDIO_INFO* getStreamInfo(int idx){
+	return &streamLst[idx].inf;
 }

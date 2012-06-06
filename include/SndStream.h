@@ -73,6 +73,7 @@ void stopStream();
 int updateStream(void);
 void destroyStream(int idx);
 
+AUDIO_INFO * getStreamInfo(int idx);
 int getPlayingSample(void);
 int getStreamState(void);
 void setStreamState(int state);
