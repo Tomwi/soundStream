@@ -100,15 +100,18 @@ FEOS_EXPORT int initSoundStreamer(void)
 
 FEOS_EXPORT void deinitSoundStreamer(void)
 {
-	if(activeStream->state == STREAM_PLAY) {
-		msg.type = FIFO_AUDIO_STOP;
-		fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-		FeOS_TimerWrite(0, 0);
-		FeOS_TimerWrite(1, 0);
+	if(activeStream) {
+		if(activeStream->state == STREAM_PLAY) {
+			msg.type = FIFO_AUDIO_STOP;
+			fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
+			FeOS_TimerWrite(0, 0);
+			FeOS_TimerWrite(1, 0);
+		}
 	}
 	fifoSetValue32Handler(fifoCh, NULL, NULL);
 	FeOS_FreeARM7(arm7_sndModule, fifoCh);
-	free(streamLst);
+	if(streamLst)
+		free(streamLst);
 }
 
 FEOS_EXPORT int createStream(AUDIO_CALLBACKS * cllbck)
@@ -295,6 +298,7 @@ FEOS_EXPORT void destroyStream(int idx)
 
 }
 
-FEOS_EXPORT AUDIO_INFO* getStreamInfo(int idx){
+FEOS_EXPORT AUDIO_INFO* getStreamInfo(int idx)
+{
 	return &streamLst[idx].inf;
 }

@@ -73,6 +73,7 @@ void stopStream();
 int updateStream(void);
 void destroyStream(int idx);
 
+/* WARNING: use only for b0rking */
 AUDIO_INFO * getStreamInfo(int idx);
 int getPlayingSample(void);
 int getStreamState(void);
