@@ -1,5 +1,6 @@
 #include <nds.h>
 #include "fifo.h"
+#include "sound.h"
 
 FIFO_AUD_MSG  msg;
 int fifoChan;
@@ -8,24 +9,27 @@ int chanReg[2];
 void FifoMsgHandler(int num_bytes, void *userdata)
 {
 	fifoGetDatamsg(fifoChan, num_bytes, (u8*)&msg);
-	int channels = msg.property >> 16;
+	int channels = (msg.property >> 16)&0x3;
+	int bytSmp = (msg.property >> 18);
+	int fmt = ( (bytSmp == 2)? SOUND_FORMAT_16BIT : SOUND_FORMAT_8BIT );
+	
 	int i;
 	switch(msg.type) {
 	case FIFO_AUDIO_START:
 		if(channels <=2 && channels > 0) {
 			for(i=0; i<channels; i++) {
 				SCHANNEL_TIMER(i) = SOUND_FREQ((u16)(msg.property));
-				SCHANNEL_SOURCE(i) = (u32)(msg.buffer+msg.bufLen*i*2);
-				SCHANNEL_LENGTH(i) = msg.bufLen/2;	// length is counted in words, sample is halfword
+				SCHANNEL_SOURCE(i) = (u32)(msg.buffer+msg.bufLen*i*bytSmp);
+				SCHANNEL_LENGTH(i) = (msg.bufLen*bytSmp)/4;	// length is counted in words, sample is halfword
 				SCHANNEL_REPEAT_POINT(i) = 0;
 			}
-
-
+			
+			
 			if(channels == 2) {
-				SCHANNEL_CR(0) = SOUND_REPEAT|SOUND_FORMAT_16BIT|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(0);
-				SCHANNEL_CR(1) = SOUND_REPEAT|SOUND_FORMAT_16BIT|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(127);
+				SCHANNEL_CR(0) = SOUND_REPEAT|fmt|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(0);
+				SCHANNEL_CR(1) = SOUND_REPEAT|fmt|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(127);
 			} else
-				SCHANNEL_CR(0) = SOUND_REPEAT|SOUND_FORMAT_16BIT|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(64);
+				SCHANNEL_CR(0) = SOUND_REPEAT|fmt|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(64);
 		fifoSendValue32 (fifoChan, FIFO_AUDIO_START);
 		}
 		
@@ -41,10 +45,10 @@ void FifoMsgHandler(int num_bytes, void *userdata)
 
 	case FIFO_AUDIO_RESUME:
 		if(channels == 2) {
-			SCHANNEL_CR(0) = SOUND_REPEAT|SOUND_FORMAT_16BIT|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(0);
-			SCHANNEL_CR(1) = SOUND_REPEAT|SOUND_FORMAT_16BIT|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(127);
+			SCHANNEL_CR(0) = SOUND_REPEAT|fmt|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(0);
+			SCHANNEL_CR(1) = SOUND_REPEAT|fmt|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(127);
 		} else
-			SCHANNEL_CR(0) = SOUND_REPEAT|SOUND_FORMAT_16BIT|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(64);
+			SCHANNEL_CR(0) = SOUND_REPEAT|fmt|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(64);
 		break;
 	default:
 		break;

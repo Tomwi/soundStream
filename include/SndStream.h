@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "sound.h"
+
 /* Timing */
 #define BUS_CLOCK   		(0x2000000)
 #define TICKS_PER_SAMP(n)	((BUS_CLOCK)/(n))
@@ -24,13 +26,8 @@ enum STREAM_STATUS {
     STREAM_WAIT,
 };
 
-enum AUDIO_FLAGS {
-    AUDIO_INTERLEAVED = (1<<0),
-    AUDIO_16BIT		  = (1<<1),	// 8BIT if not set
-};
-
 typedef struct {
-	s16 * buffer;
+	s8* buffer;
 	int bufLen;
 	int bufOff;
 } AUDIO_BUFFER;
@@ -43,7 +40,7 @@ typedef struct {
 
 typedef struct {
 	int (*onOpen)(const char* , AUDIO_INFO*, void** context);
-	int (*onRead)(int length, short * buf, void * context);
+	int (*onRead)(int length, void * buf, void * context);
 	void (*onClose)(void * context);
 	void * context;
 } AUDIO_CALLBACKS;
@@ -78,8 +75,10 @@ AUDIO_INFO * getStreamInfo(int idx);
 int getPlayingSample(void);
 int getStreamState(void);
 void setStreamState(int state);
-short * getoutBuf(void);
+void* getoutBuf(void);
 
+/* WARNING: use only with samples = 4n */
 void _deInterleave(short *in, short *out, int samples);
+void _8bdeInterleave(s8 *in, s8 *out, int samples);
 
 #endif /* SND_STREAM_H */

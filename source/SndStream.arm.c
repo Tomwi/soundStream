@@ -6,13 +6,17 @@
 int fifoCh;
 instance_t arm7_sndModule;
 
-s16 mainBuf[MAX_N_CHANS * STREAM_BUF_SIZE * 2];
-AUDIO_BUFFER outBuf = {(s16*)&mainBuf, 0, 0,};
-AUDIO_BUFFER workBuf = {(s16*)&mainBuf[MAX_N_CHANS * STREAM_BUF_SIZE], 0, 0,};
+/* sample is 2 bytes, work and outBuf */
+s8 mainBuf[MAX_N_CHANS * STREAM_BUF_SIZE * 2 * 2];
+
+AUDIO_BUFFER outBuf = {mainBuf, 0, 0,};
+AUDIO_BUFFER workBuf = {&mainBuf[sizeof(mainBuf)/2], 0, 0,};
 
 AUDIO_STREAM * streamLst;
 AUDIO_STREAM * activeStream;
+
 int numStream, activeIdx;
+unsigned int shifter, bytSmp;
 
 hword_t  sampleCount[2];
 
@@ -31,44 +35,44 @@ void fifoValHandler(u32 value32, void *userdata)
 	}
 }
 
-void copySamples(short * inBuf, int samples)
+void copySamples(s8* inBuf, int samples)
 {
-	// Deinterleave will fail otherwise (deinterleaves 4n samples)
-	samples &= (~3); // bic
-	int toEnd = ((outBuf.bufOff + samples) > STREAM_BUF_SIZE? STREAM_BUF_SIZE - outBuf.bufOff : samples);
-	toEnd  	&= (~3);
+	int mask = 3;
+	samples &= (~mask); // bic
+	int toCopy = ((outBuf.bufOff + samples) > STREAM_BUF_SIZE? (STREAM_BUF_SIZE - outBuf.bufOff) : samples);
+	toCopy  	&= (~mask);
 
 copy:
 
-	if(toEnd) {
-
+	if(toCopy) {
 		switch(activeStream->inf.channelCount) {
-			// Right channel
 		case 2:
 			if(!(activeStream->inf.flags & AUDIO_INTERLEAVED))
-				memcpy(&outBuf.buffer[STREAM_BUF_SIZE+outBuf.bufOff], &inBuf[toEnd], toEnd*2);
-			// has to be stereo
+				memcpy(&outBuf.buffer[((STREAM_BUF_SIZE+outBuf.bufOff)*bytSmp)], &inBuf[toCopy*bytSmp], toCopy*bytSmp);
 			else {
-				_deInterleave(inBuf, &outBuf.buffer[outBuf.bufOff], toEnd);
+				if(bytSmp==2)
+					_deInterleave((short*)inBuf, (short*)&outBuf.buffer[outBuf.bufOff*2], toCopy);
+				else
+					_8bdeInterleave(inBuf, &outBuf.buffer[outBuf.bufOff], toCopy);
 				break;
 			}
 			//Left channel
 		case 1:
-			memcpy(&outBuf.buffer[outBuf.bufOff], inBuf, toEnd*2);
+			memcpy(&outBuf.buffer[outBuf.bufOff*bytSmp], inBuf, toCopy*bytSmp);
 			break;
 		}
 	}
 
-	samples -= toEnd;
-	/* There was a split */
+	samples -= toCopy;
+	
 	if(samples) {
 		outBuf.bufOff = 0;
-		inBuf += toEnd*activeStream->inf.channelCount;
-		toEnd = samples;
+		inBuf += (toCopy*activeStream->inf.channelCount)*bytSmp;
+		toCopy = samples;
 		goto copy;
 	}
-	outBuf.bufOff += toEnd;
-
+	outBuf.bufOff += toCopy;
+	
 	DC_FlushAll();
 	FeOS_DrainWriteBuffer();
 }
@@ -136,21 +140,24 @@ FEOS_EXPORT int startStream(const char* inf, int idx)
 	activeStream = &streamLst[activeIdx];
 	if(!activeStream->cllbcks->onOpen(inf, &activeStream->inf, &activeStream->cllbcks->context))
 		return STREAM_ERR;
-
+	bytSmp = ((activeStream->inf.flags&AUDIO_16BIT)? 2 : 1);
+	shifter = 1>>bytSmp;
+		
 	int nChans = activeStream->inf.channelCount;
 	int frequency = activeStream->inf.frequency;
 	if(activeStream->inf.channelCount <= MAX_N_CHANS) {
-		memset(workBuf.buffer, 0, STREAM_BUF_SIZE*2*nChans);
-		memset(outBuf.buffer, 0, STREAM_BUF_SIZE*2*nChans);
+		memset(workBuf.buffer, 0, STREAM_BUF_SIZE*bytSmp*nChans);
+		memset(outBuf.buffer, 0, STREAM_BUF_SIZE*bytSmp*nChans);
 		workBuf.bufOff = outBuf.bufOff = 0;
 		sampleCount[0] = sampleCount[1] = 0;
 		preFill();
-
+		
 		msg.type = FIFO_AUDIO_START;
-		msg.property = (frequency | (nChans<<16));
+		msg.property = (frequency | (nChans<<16) | ((bytSmp<<18)));
 		msg.buffer = outBuf.buffer;
 		msg.bufLen = STREAM_BUF_SIZE;
 		fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
+		
 		return 1;
 	}
 	return 0;
@@ -166,21 +173,21 @@ FEOS_EXPORT void pauseStream(void)
 	FeOS_TimerWrite(1, 0);
 
 	int i,j;
-	int size = STREAM_BUF_SIZE-activeStream->smpNc;
-	int start = outBuf.bufOff-size;
+	int samples = STREAM_BUF_SIZE-activeStream->smpNc;
+	int start = (outBuf.bufOff - samples);
 	if(start < 0)
-		start +=STREAM_BUF_SIZE;
+		start+=STREAM_BUF_SIZE;
 
 	for(j=0; j<activeStream->inf.channelCount; j++) {
-		for(i = 0; i<STREAM_BUF_SIZE-activeStream->smpNc; i++) {
-			workBuf.buffer[STREAM_BUF_SIZE*j + i] = outBuf.buffer[STREAM_BUF_SIZE*j + (start + i)%8192];
+		for(i = 0; i<samples; i++) {
+			workBuf.buffer[(STREAM_BUF_SIZE*j + i)*bytSmp] = outBuf.buffer[(STREAM_BUF_SIZE*j + ((start + i)%8192))*bytSmp];
 		}
 	}
-	memcpy(outBuf.buffer, workBuf.buffer, size*2);
+	memcpy(outBuf.buffer, workBuf.buffer, samples*bytSmp);
 	if(activeStream->inf.channelCount == 2)
-		memcpy(outBuf.buffer+STREAM_BUF_SIZE, workBuf.buffer+STREAM_BUF_SIZE, size*2);
+		memcpy((outBuf.buffer+(STREAM_BUF_SIZE*bytSmp)), workBuf.buffer+STREAM_BUF_SIZE*bytSmp, samples*bytSmp);
 
-	outBuf.bufOff = size;
+	outBuf.bufOff = samples;
 	activeStream->state = STREAM_PAUSE;
 	DC_FlushAll();
 	FeOS_DrainWriteBuffer();
@@ -272,7 +279,7 @@ FEOS_EXPORT void setStreamState(int state)
 		activeStream->state = state;
 }
 
-FEOS_EXPORT short * getoutBuf(void)
+FEOS_EXPORT void * getoutBuf(void)
 {
 	return outBuf.buffer;
 }
