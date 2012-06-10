@@ -313,7 +313,8 @@ FEOS_EXPORT void destroyStream(int idx)
 {
 	if(idx >= 0 && idx < numStream) {
 		if(idx == activeIdx) {
-			stopStream();
+			if(streamLst[idx].state != STREAM_STOP )
+				stopStream();
 		}
 		numStream--;
 		if(idx < (numStream))
