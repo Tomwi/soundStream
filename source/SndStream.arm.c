@@ -120,43 +120,46 @@ FEOS_EXPORT void deinitSoundStreamer(void)
 
 FEOS_EXPORT int createStream(AUDIO_CALLBACKS * cllbck)
 {
-	if(cllbck->onOpen != NULL &&  cllbck->onRead != NULL) {
-		void * temp = realloc(streamLst, (numStream+1)*sizeof(AUDIO_STREAM));
-		if(temp) {
-			streamLst = temp;
-			streamLst[numStream].state = STREAM_STOP;
-			streamLst[numStream].smpNc = 0;
-			streamLst[numStream].cllbcks = cllbck;
-			numStream++;
-			return (numStream-1);
-		}
+
+	void * temp = realloc(streamLst, (numStream+1)*sizeof(AUDIO_STREAM));
+	if(temp) {
+		streamLst = temp;
+		streamLst[numStream].state = STREAM_STOP;
+		streamLst[numStream].smpNc = 0;
+		streamLst[numStream].cllbcks = cllbck;
+		numStream++;
+		return (numStream-1);
 	}
+
 	return -1;
 }
 
 FEOS_EXPORT int startStream(const char* inf, int idx)
 {
+
 	activeIdx = idx;
 	activeStream = &streamLst[activeIdx];
-	if(!activeStream->cllbcks->onOpen(inf, &activeStream->inf, &activeStream->cllbcks->context))
-		return STREAM_ERR;
-	bytSmp = ((activeStream->inf.flags&AUDIO_16BIT)? 2 : 1);
-	shifter = 1>>bytSmp;
+	if(activeStream->cllbcks->onOpen != NULL &&  activeStream->cllbcks->onRead != NULL && activeStream->cllbcks->onClose != NULL) {
+		if(!activeStream->cllbcks->onOpen(inf, &activeStream->inf, &activeStream->cllbcks->context))
+			return STREAM_ERR;
+		bytSmp = ((activeStream->inf.flags&AUDIO_16BIT)? 2 : 1);
+		shifter = 1>>bytSmp;
 
-	nChans = activeStream->inf.channelCount;
-	int frequency = activeStream->inf.frequency;
-	if(activeStream->inf.channelCount <= MAX_N_CHANS) {
-		memset(workBuf.buffer, 0, STREAM_BUF_SIZE*bytSmp*nChans);
-		memset(outBuf.buffer, 0, STREAM_BUF_SIZE*bytSmp*nChans);
-		workBuf.bufOff = outBuf.bufOff = 0;
-		sampleCount[0] = sampleCount[1] = 0;
-		preFill();
-		msg.type = FIFO_AUDIO_START;
-		msg.property = (frequency | (nChans<<16) | ((bytSmp<<18)));
-		msg.buffer = outBuf.buffer;
-		msg.bufLen = STREAM_BUF_SIZE;
-		fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-		return 1;
+		nChans = activeStream->inf.channelCount;
+		int frequency = activeStream->inf.frequency;
+		if(activeStream->inf.channelCount <= MAX_N_CHANS) {
+			memset(workBuf.buffer, 0, STREAM_BUF_SIZE*bytSmp*nChans);
+			memset(outBuf.buffer, 0, STREAM_BUF_SIZE*bytSmp*nChans);
+			workBuf.bufOff = outBuf.bufOff = 0;
+			sampleCount[0] = sampleCount[1] = 0;
+			preFill();
+			msg.type = FIFO_AUDIO_START;
+			msg.property = (frequency | (nChans<<16) | ((bytSmp<<18)));
+			msg.buffer = outBuf.buffer;
+			msg.bufLen = STREAM_BUF_SIZE;
+			fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
+			return 1;
+		}
 	}
 	return 0;
 }
@@ -293,7 +296,7 @@ FEOS_EXPORT int getPlayingSample(void)
 
 FEOS_EXPORT int getStreamState(void)
 {
-	if(numStream)
+	if(activeStream)
 		return activeStream->state;
 	return STREAM_STOP;
 }
