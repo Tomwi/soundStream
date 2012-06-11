@@ -229,12 +229,17 @@ FEOS_EXPORT void resumeStream(void)
 
 FEOS_EXPORT void stopStream(void)
 {
-	msg.type = FIFO_AUDIO_STOP;
-	fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-	FeOS_TimerWrite(0, 0);
-	FeOS_TimerWrite(1, 0);
-	activeStream->state = STREAM_STOP;
-	activeStream->cllbcks->onClose(activeStream->cllbcks->context);
+	if(activeStream) {
+		msg.type = FIFO_AUDIO_STOP;
+		fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
+		FeOS_TimerWrite(0, 0);
+		FeOS_TimerWrite(1, 0);
+
+		activeStream->smpNc = 0;
+		activeStream->state = STREAM_STOP;
+		activeStream->cllbcks->onClose(activeStream->cllbcks->context);
+		activeStream = NULL;
+	}
 }
 
 FEOS_EXPORT int updateStream(void)
@@ -259,20 +264,25 @@ decode:
 			stopStream();
 			return STREAM_ERR;
 		case STREAM_EOF:
-			activeStream->state = STREAM_WAIT;
-			if(activeStream->smpNc >= STREAM_BUF_SIZE) {
-				stopStream();
-				return STREAM_EOF;
-			}
-			int i,j;
-			/* No more samples to decode, but still playing, fill zeroes */
-			for(j=0; j<activeStream->inf.channelCount; j++) {
-				for(i=outBuf.bufOff; i<(outBuf.bufOff+smpPlayed); i++) {
-					/* STREAM_BUF_SIZE is a power of 2 */
-					outBuf.buffer[(i%STREAM_BUF_SIZE)+STREAM_BUF_SIZE*j] = 0;
+			if(activeStream->cllbcks->onEof) {
+				activeStream->cllbcks->onEof(activeStream->cllbcks->context);
+			} else {
+				activeStream->state = STREAM_WAIT;
+				if(activeStream->smpNc >= STREAM_BUF_SIZE) {
+					printf("Stopping stream due to EOF\n");
+					stopStream();
+					return STREAM_EOF;
 				}
+				int i,j;
+				/* No more samples to decode, but still playing, fill zeroes */
+				for(j=0; j<activeStream->inf.channelCount; j++) {
+					for(i=outBuf.bufOff; i<(outBuf.bufOff+smpPlayed); i++) {
+						/* STREAM_BUF_SIZE is a power of 2 */
+						outBuf.buffer[(i%STREAM_BUF_SIZE)+STREAM_BUF_SIZE*j] = 0;
+					}
+				}
+				outBuf.bufOff = (outBuf.bufOff + smpPlayed)%STREAM_BUF_SIZE;
 			}
-			outBuf.bufOff = (outBuf.bufOff + smpPlayed)%STREAM_BUF_SIZE;
 			break;
 		default:
 			if(ret > 0) {
@@ -293,7 +303,7 @@ FEOS_EXPORT int getPlayingSample(void)
 
 FEOS_EXPORT int getStreamState(void)
 {
-	if(numStream)
+	if(activeStream)
 		return activeStream->state;
 	return STREAM_STOP;
 }
