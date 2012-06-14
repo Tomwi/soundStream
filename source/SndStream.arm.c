@@ -65,7 +65,7 @@ void copySamples(s8* inBuf, int samples, int req)
 	}
 	workBuf.bufOff = samples;
 	if(workBuf.bufOff>0) {
-		memmove(workBuf.buffer, &workBuf.buffer[(total-samples)*2*bytSmp], workBuf.bufOff*2*bytSmp);
+		memmove(workBuf.buffer, &workBuf.buffer[(total-samples)*nChans*bytSmp], workBuf.bufOff*nChans*bytSmp);
 	}
 	DC_FlushAll();
 	FeOS_DrainWriteBuffer();
@@ -103,7 +103,10 @@ FEOS_EXPORT void deinitSoundStreamer(void)
 	}
 	FeOS_FreeARM7(arm7_sndModule, fifoCh);
 	if(streamLst)
+	{
 		free(streamLst);
+		streamLst = NULL;
+	}
 }
 
 FEOS_EXPORT int createStream(AUDIO_CALLBACKS * cllbck)
@@ -179,7 +182,7 @@ FEOS_EXPORT void pauseStream(void)
 
 	/* Will only happen with interleaved data. Defragment remaining data */
 	if(workBuf.bufOff) {
-		memmove(&workBuf.buffer[(toCopy%STREAM_BUF_SIZE)*bytSmp*2], workBuf.buffer, workBuf.bufOff*bytSmp*2);
+		memmove(&workBuf.buffer[(toCopy%STREAM_BUF_SIZE)*bytSmp*nChans], workBuf.buffer, workBuf.bufOff*bytSmp*nChans);
 	}
 
 	int i;
@@ -202,7 +205,7 @@ FEOS_EXPORT void pauseStream(void)
 	}
 	outBuf.bufOff = toCopy;
 	if(workBuf.bufOff) {
-		memmove(workBuf.buffer, &workBuf.buffer[(toCopy%STREAM_BUF_SIZE)*bytSmp*2], workBuf.bufOff*bytSmp*2);
+		memmove(workBuf.buffer, &workBuf.buffer[(toCopy%STREAM_BUF_SIZE)*bytSmp*nChans], workBuf.bufOff*bytSmp*nChans);
 	}
 	activeStream->state = STREAM_PAUSE;
 	activeStream->smpNc = (STREAM_BUF_SIZE - toCopy);
@@ -319,15 +322,24 @@ FEOS_EXPORT void destroyStream(int idx)
 				stopStream();
 		}
 		numStream--;
-		if(idx < (numStream))
-			memmove(&streamLst[idx], &streamLst[(idx+1)], sizeof(AUDIO_STREAM)*(numStream-idx));
-		void * temp = realloc(streamLst, (numStream)*sizeof(AUDIO_STREAM));
-		if(temp)
-			streamLst = temp;
-		else {
-			free(streamLst);
-			numStream = 0;
+		int move = numStream-idx;
+		printf("move: %d ns: %d\n", move, numStream);
+		if (move)
+			memmove(&streamLst[idx], &streamLst[(idx+1)], sizeof(AUDIO_STREAM)*move);
+		if (numStream)
+		{
+			void * temp = realloc(streamLst, (numStream)*sizeof(AUDIO_STREAM));
+			if(temp)
+				streamLst = temp;
+			else
+				return;
 		}
+		if (streamLst)
+		{
+			free(streamLst);
+			streamLst = NULL;
+		}
+		numStream = 0;
 	}
 
 }
