@@ -4,8 +4,7 @@
 
 FIFO_AUD_MSG  msg;
 int fifoChan;
-
-int chanReg[2];
+u16 tmrData;
 
 void FifoMsgHandler(int num_bytes, void *userdata)
 {
@@ -18,12 +17,22 @@ void FifoMsgHandler(int num_bytes, void *userdata)
 	switch(msg.type) {
 	case FIFO_AUDIO_START:
 		if(channels <=2 && channels > 0) {
+			int freq = msg.property & 0xFFFF;
 			for(i=0; i<channels; i++) {
-				SCHANNEL_TIMER(i) = SOUND_FREQ((u16)(msg.property));
+				SCHANNEL_TIMER(i) = SOUND_FREQ(freq);
 				SCHANNEL_SOURCE(i) = (u32)(msg.buffer+msg.bufLen*i*bytSmp);
 				SCHANNEL_LENGTH(i) = (msg.bufLen*bytSmp)/4;	// length is counted in words, sample is halfword
 				SCHANNEL_REPEAT_POINT(i) = 0;
 			}
+
+			tmrData = -0x2000000 / freq;
+
+	case FIFO_AUDIO_RESUME:
+
+			TIMER_CR(0) = 0;
+			TIMER_CR(1) = 0;
+			TIMER_DATA(0) = tmrData;
+			TIMER_DATA(1) = 0;
 			
 			
 			if(channels == 2) {
@@ -31,27 +40,23 @@ void FifoMsgHandler(int num_bytes, void *userdata)
 				SCHANNEL_CR(1) = SOUND_REPEAT|fmt|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(127);
 			} else
 				SCHANNEL_CR(0) = SOUND_REPEAT|fmt|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(64);
-		fifoSendValue32 (fifoChan, FIFO_AUDIO_START);
+
+			TIMER_CR(0) = TIMER_ENABLE;
+			TIMER_CR(1) = TIMER_ENABLE | TIMER_CASCADE;
+			fifoSendValue32 (fifoChan, 1);
 		}
 		
 		break;
 	case FIFO_AUDIO_STOP:
-		SCHANNEL_CR(0) = 0;
-		SCHANNEL_CR(1) = 0;
-		break;
 	case FIFO_AUDIO_PAUSE:
+		TIMER_CR(0) = 0;
+		TIMER_CR(1) = 0;
 		SCHANNEL_CR(0) = 0;
 		SCHANNEL_CR(1) = 0;
 		break;
 
-	case FIFO_AUDIO_RESUME:
-		if(channels == 2) {
-			SCHANNEL_CR(0) = SOUND_REPEAT|fmt|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(0);
-			SCHANNEL_CR(1) = SOUND_REPEAT|fmt|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(127);
-		} else
-			SCHANNEL_CR(0) = SOUND_REPEAT|fmt|SCHANNEL_ENABLE|SOUND_VOL(127)|SOUND_PAN(64);
-		break;
-	default:
+	case FIFO_AUDIO_READTMR:
+		fifoSendValue32(fifoChan, (TIMER_DATA(1)-3)&0xFFFF);
 		break;
 	}
 }
