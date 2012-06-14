@@ -23,17 +23,12 @@ hword_t  sampleCount[2];
 
 FIFO_AUD_MSG msg;
 
-void fifoValHandler(u32 value32, void *userdata)
+static int readTimer()
 {
-	switch(value32) {
-	case FIFO_AUDIO_START:
-		FeOS_TimerWrite(0, ((1<<16)-TICKS_PER_SAMP(activeStream->inf.frequency))|((TIMER_ENABLE)<<16));
-		FeOS_TimerWrite(1, ((TIMER_CASCADE|TIMER_ENABLE)<<16));
-		activeStream->state = STREAM_PLAY;
-		break;
-	default:
-		break;
-	}
+	msg.type = FIFO_AUDIO_READTMR;
+	fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
+	while (!fifoCheckValue32(fifoCh));
+	return (int)fifoGetValue32(fifoCh);
 }
 
 void copySamples(s8* inBuf, int samples, int req)
@@ -96,7 +91,6 @@ FEOS_EXPORT int initSoundStreamer(void)
 	arm7_sndModule= FeOS_LoadARM7(ARM7_MODULE_PATH, &fifoCh);
 
 	if(arm7_sndModule) {
-		fifoSetValue32Handler(fifoCh, fifoValHandler, NULL);
 		return 1;
 	}
 	return 0;
@@ -105,14 +99,8 @@ FEOS_EXPORT int initSoundStreamer(void)
 FEOS_EXPORT void deinitSoundStreamer(void)
 {
 	if(activeStream) {
-		if(activeStream->state == STREAM_PLAY) {
-			msg.type = FIFO_AUDIO_STOP;
-			fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-			FeOS_TimerWrite(0, 0);
-			FeOS_TimerWrite(1, 0);
-		}
+		stopStream();
 	}
-	fifoSetValue32Handler(fifoCh, NULL, NULL);
 	FeOS_FreeARM7(arm7_sndModule, fifoCh);
 	if(streamLst)
 		free(streamLst);
@@ -158,7 +146,12 @@ FEOS_EXPORT int startStream(const char* inf, int idx)
 			msg.buffer = outBuf.buffer;
 			msg.bufLen = STREAM_BUF_SIZE;
 			fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-			return 1;
+			while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
+			if (fifoGetValue32(fifoCh))
+			{
+				activeStream->state = STREAM_PLAY;
+				return 1;
+			}
 		}
 	}
 	return 0;
@@ -175,8 +168,6 @@ FEOS_EXPORT void pauseStream(void)
 
 	sampleCount[0] = sampleCount[1] = 0;
 
-	FeOS_TimerWrite(0, 0);
-	FeOS_TimerWrite(1, 0);
 	/*
 	 * Somewhat b0rked, but the max 3 samples you will loose, well it isn't worth the misalignment
 	 * of outBuf.bufOff it can cause and like you're gonna miss them...
@@ -225,9 +216,9 @@ FEOS_EXPORT void resumeStream(void)
 	msg.type = FIFO_AUDIO_RESUME;
 	fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
 
-	FeOS_TimerWrite(0, ((1<<16)-TICKS_PER_SAMP(activeStream->inf.frequency))|((TIMER_ENABLE)<<16));
-	FeOS_TimerWrite(1, ((TIMER_CASCADE|TIMER_ENABLE)<<16));
-	activeStream->state = STREAM_PLAY;
+	while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
+	if (fifoGetValue32(fifoCh))
+		activeStream->state = STREAM_PLAY;
 }
 
 FEOS_EXPORT void stopStream(void)
@@ -235,8 +226,6 @@ FEOS_EXPORT void stopStream(void)
 	if(activeStream) {
 		msg.type = FIFO_AUDIO_STOP;
 		fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-		FeOS_TimerWrite(0, 0);
-		FeOS_TimerWrite(1, 0);
 
 		activeStream->smpNc = 0;
 		activeStream->state = STREAM_STOP;
@@ -247,7 +236,7 @@ FEOS_EXPORT void stopStream(void)
 
 FEOS_EXPORT int updateStream(void)
 {
-	sampleCount[0] = FeOS_TimerTick(1);
+	sampleCount[0] = readTimer();
 	int smpPlayed = sampleCount[0]-sampleCount[1];
 	smpPlayed += (smpPlayed < 0 ? (1<<16) : 0);
 
