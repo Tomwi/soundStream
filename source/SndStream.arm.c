@@ -264,7 +264,9 @@ decode:
 			} else {
 				activeStream->state = STREAM_WAIT;
 				if(activeStream->smpNc >= STREAM_BUF_SIZE) {
+#ifdef DEBUG
 					printf("Stopping stream due to EOF\n");
+#endif
 					stopStream();
 					return STREAM_EOF;
 				}
