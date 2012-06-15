@@ -71,7 +71,7 @@ add r3, r1, #(BUF_BYTES/2)
 
 .loop:
 ldmia r0!,{r4-r5}
-@ links
+@ left channel
 and r6, ip, r4, lsr #16
 orr r6, r6, r4, lsl #24
 
@@ -83,7 +83,7 @@ orr r7, r7, r6, ror #24
 
 str r7,[r1],#4
 
-@rechts
+@ right channel
 and r6, r9, r4, lsl #16
 orr r6, r6, r4, lsr #24
 

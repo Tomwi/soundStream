@@ -325,7 +325,9 @@ FEOS_EXPORT void destroyStream(int idx)
 		}
 		numStream--;
 		int move = numStream-idx;
+#ifdef DEBUG
 		printf("move: %d ns: %d\n", move, numStream);
+#endif
 		if (move)
 			memmove(&streamLst[idx], &streamLst[(idx+1)], sizeof(AUDIO_STREAM)*move);
 		if (numStream)
