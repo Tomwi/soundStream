@@ -24,7 +24,7 @@ export THIS_MAKEFILE := Makefile
 # DATA is a list of directories containing data files
 # INCLUDES is a list of directories containing header files
 #---------------------------------------------------------------------------------
-TARGET        := sndStreamStub
+TARGET        := b0rklter
 BUILD         := build
 SOURCES       := source
 DATA          := data

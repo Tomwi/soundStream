@@ -28,7 +28,7 @@ TARGET        := $(shell basename $(CURDIR))
 BUILD         := build
 SOURCES       := source
 DATA          := data
-INCLUDES      := include common/include
+INCLUDES      := include include/common
 
 CONF_DEFINES = -DBUILD_STREAM
 

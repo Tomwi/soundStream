@@ -4,20 +4,21 @@
 #define ARM7_MODULE_PATH "/data/FeOS/arm7/sndStreamStub.fx2"
 #define CLAMP(n,l,u) ((n) = ((n) > (u) ? (u) : ((n)<l ? (l) : (n))))
 #define BIC(a,b) ((a) &~(b))
+
 int fifoCh;
 instance_t arm7_sndModule;
+FILTER* fltr;
 
 /* sample is 2 bytes, work and outBuf */
 s8 mainBuf[MAX_N_CHANS * STREAM_BUF_SIZE * 2 * 2];
-
+void* pcmBuf;
 AUDIO_BUFFER outBuf = {mainBuf, 0, 0,};
 AUDIO_BUFFER workBuf = {&mainBuf[sizeof(mainBuf)/2], 0, 0,};
 
 AUDIO_STREAM * streamLst;
 AUDIO_STREAM * activeStream;
 
-int numStream, activeIdx, nChans;
-unsigned int shifter, bytSmp;
+unsigned int numStream, activeIdx, nChans, bytSmp;
 
 hword_t  sampleCount[2];
 
@@ -31,44 +32,86 @@ static int readTimer()
 	return (int)fifoGetValue32(fifoCh);
 }
 
-void copySamples(s8* inBuf, int samples, int req)
+void copySamples(s8* in, int samples, int req)
 {
+	int mask = 0x3;
 	int total = samples;
-	int mask = ((activeStream->inf.flags&AUDIO_INTERLEAVED)? 3 : 0);
-
 	while(samples >= 4) {
-
 		int toCopy = ((outBuf.bufOff + samples) > STREAM_BUF_SIZE? (STREAM_BUF_SIZE - outBuf.bufOff) : samples);
-		toCopy  	&= (~mask);
+		toCopy = BIC(toCopy, mask);
 
+		/* Always deinterleave (if necessary) in MAIN RAM.
+		 * if deinterleaving is not necesarry:
+		 * 	-memcpy if filtering is disabled
+		 * 	-send fifo for ARM7 DMA copy if filtering is enabled
+		 */
 		if(toCopy) {
+
 			switch(activeStream->inf.channelCount) {
 			case 2:
-				if(!(activeStream->inf.flags & AUDIO_INTERLEAVED))
-					memcpy(&outBuf.buffer[((STREAM_BUF_SIZE+outBuf.bufOff)*bytSmp)], &inBuf[req*bytSmp], toCopy*bytSmp);
-				else {
-					if(bytSmp==2) {
-						_deInterleave((short*)inBuf, (short*)&outBuf.buffer[outBuf.bufOff*bytSmp], toCopy);
-					} else
-						_8bdeInterleave(inBuf, &outBuf.buffer[outBuf.bufOff], toCopy);
+				if(activeStream->inf.flags & AUDIO_INTERLEAVED) {
+					if(bytSmp==2)
+						_deInterleave((short*)in, (short*)&outBuf.buffer[outBuf.bufOff*2], toCopy);
+					else
+						_8bdeInterleave(in, &outBuf.buffer[outBuf.bufOff], toCopy);
+					if(pcmBuf) {
+						msg.lBuf = &outBuf.buffer[outBuf.bufOff*bytSmp];
+						msg.rBuf = &outBuf.buffer[(STREAM_BUF_SIZE+outBuf.bufOff)*bytSmp];
+					}
 					break;
+				} else {
+					if(pcmBuf)
+						msg.rBuf = in + req * bytSmp;
+					else
+						memcpy(&outBuf.buffer[((STREAM_BUF_SIZE+outBuf.bufOff)*bytSmp)], &in[req*bytSmp], toCopy*bytSmp);
 				}
+				// no break, we go further to another memcpy (2 channels not interleaved)
 			case 1:
-				memcpy(&outBuf.buffer[outBuf.bufOff*bytSmp], inBuf, toCopy*bytSmp);
+				if(pcmBuf)
+					msg.lBuf = in;
+				else
+					memcpy(&outBuf.buffer[outBuf.bufOff*bytSmp], in, toCopy*bytSmp);
 				break;
 			}
+
+			/* The arm7 will be DMA-copying, flush the caches to ensure
+			 * that the right data is copied to the sound Buffer
+			 * -OR-
+			 * the sound buffer is located in MAIN RAM, so MAIN RAM should be
+			 * up-to-date for the sound controller
+			 */
+			DC_FlushAll();
+			FeOS_DrainWriteBuffer();
+			if(pcmBuf) {
+				msg.type = FIFO_AUDIO_COPY;
+				/* otherwhise we copy nothing in the prefill */
+				msg.property = bytSmp;
+				msg.off  = outBuf.bufOff;
+				msg.len =  toCopy;
+				fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
+				while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
+				fifoGetValue32(fifoCh);
+			}
+			samples -= toCopy;
+			outBuf.bufOff += toCopy;
+			outBuf.bufOff %= STREAM_BUF_SIZE;
+			in+=toCopy*bytSmp*nChans;
 		}
-		samples -= toCopy;
-		outBuf.bufOff += toCopy;
-		outBuf.bufOff %= STREAM_BUF_SIZE;
-		inBuf+=toCopy*bytSmp*nChans;
 	}
 	workBuf.bufOff = samples;
 	if(workBuf.bufOff>0) {
 		memmove(workBuf.buffer, &workBuf.buffer[(total-samples)*nChans*bytSmp], workBuf.bufOff*nChans*bytSmp);
 	}
-	DC_FlushAll();
-	FeOS_DrainWriteBuffer();
+	/* send a filter request */
+	if(pcmBuf) {
+		int off = outBuf.bufOff - (total - samples);
+		if(off < 0)
+			off+=STREAM_BUF_SIZE;
+		fltr->msg.msgType 	 = FILTER_REQUEST;
+		fltr->msg.off 	 	 = off;
+		fltr->msg.len 		 = (total - samples);
+		fifoSendDatamsg(fltr->fifoCh, sizeof(FIFO_FLTR_MSG), &fltr->msg);
+	}
 }
 
 void preFill(void)
@@ -89,11 +132,27 @@ void preFill(void)
 FEOS_EXPORT int initSoundStreamer(void)
 {
 	arm7_sndModule= FeOS_LoadARM7(ARM7_MODULE_PATH, &fifoCh);
-
 	if(arm7_sndModule) {
 		return 1;
 	}
 	return 0;
+}
+
+FEOS_EXPORT void enableFiltering(word_t bufmd, bool inBankC)
+{
+	if(bufmd == SOUNDBUF_0x6020000)
+		pcmBuf = (void*)(0x6020000);
+	else
+		pcmBuf = (void*)(0x6000000);
+	if(inBankC)
+		vramSetBankC(bufmd);
+	else
+		vramSetBankD(bufmd);
+}
+
+FEOS_EXPORT void disableFiltering(void)
+{
+	pcmBuf = NULL;
 }
 
 FEOS_EXPORT void deinitSoundStreamer(void)
@@ -102,8 +161,7 @@ FEOS_EXPORT void deinitSoundStreamer(void)
 		stopStream();
 	}
 	FeOS_FreeARM7(arm7_sndModule, fifoCh);
-	if(streamLst)
-	{
+	if(streamLst) {
 		free(streamLst);
 		streamLst = NULL;
 	}
@@ -127,31 +185,36 @@ FEOS_EXPORT int createStream(AUDIO_CALLBACKS * cllbck)
 
 FEOS_EXPORT int startStream(const char* inf, int idx)
 {
-
 	activeIdx = idx;
 	activeStream = &streamLst[activeIdx];
 	if(activeStream->cllbcks->onOpen != NULL &&  activeStream->cllbcks->onRead != NULL && activeStream->cllbcks->onClose != NULL) {
 		if(!activeStream->cllbcks->onOpen(inf, &activeStream->inf, &activeStream->cllbcks->context))
 			return STREAM_ERR;
 		bytSmp = ((activeStream->inf.flags&AUDIO_16BIT)? 2 : 1);
-		shifter = 1>>bytSmp;
-
 		nChans = activeStream->inf.channelCount;
 		int frequency = activeStream->inf.frequency;
 		if(activeStream->inf.channelCount <= MAX_N_CHANS) {
+			/* Clear MAIN RAM BUFFERS
+			 * (optional) VRAM BUFFER is cleared by the ARM7
+			*/
 			memset(workBuf.buffer, 0, STREAM_BUF_SIZE*bytSmp*nChans);
 			memset(outBuf.buffer, 0, STREAM_BUF_SIZE*bytSmp*nChans);
+			if(pcmBuf && fltr) {
+				fltr->msg.buffer = pcmBuf;
+				fltr->msg.bufLen = STREAM_BUF_SIZE;
+				fltr->msg.nChans = nChans;
+				fltr->msg.bytSmp = bytSmp;
+			}
 			workBuf.bufOff = outBuf.bufOff = 0;
 			sampleCount[0] = sampleCount[1] = 0;
 			preFill();
-			msg.type = FIFO_AUDIO_START;
-			msg.property = (frequency | (nChans<<16) | ((bytSmp<<18)));
-			msg.buffer = outBuf.buffer;
-			msg.bufLen = STREAM_BUF_SIZE;
+			msg.buffer 	= (pcmBuf? pcmBuf: outBuf.buffer);
+			msg.type 	= FIFO_AUDIO_START;
+			msg.property 	= (frequency | (nChans<<16) | ((bytSmp<<18)));
+			msg.bufLen 	= STREAM_BUF_SIZE;
 			fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
 			while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
-			if (fifoGetValue32(fifoCh))
-			{
+			if (fifoGetValue32(fifoCh)) {
 				activeStream->state = STREAM_PLAY;
 				return 1;
 			}
@@ -163,6 +226,7 @@ FEOS_EXPORT int startStream(const char* inf, int idx)
 /*
  * Disable the sound channel(s) and defragment the outBuf data
  * so that it will resume where it left
+ * TODO: unb0rk for filtered streams
  */
 FEOS_EXPORT void pauseStream(void)
 {
@@ -330,16 +394,14 @@ FEOS_EXPORT void destroyStream(int idx)
 #endif
 		if (move)
 			memmove(&streamLst[idx], &streamLst[(idx+1)], sizeof(AUDIO_STREAM)*move);
-		if (numStream)
-		{
+		if (numStream) {
 			void * temp = realloc(streamLst, (numStream)*sizeof(AUDIO_STREAM));
 			if(temp)
 				streamLst = temp;
 			else
 				return;
 		}
-		if (streamLst)
-		{
+		if (streamLst) {
 			free(streamLst);
 			streamLst = NULL;
 		}
@@ -351,4 +413,18 @@ FEOS_EXPORT void destroyStream(int idx)
 FEOS_EXPORT AUDIO_INFO* getStreamInfo(int idx)
 {
 	return &streamLst[idx].inf;
+}
+
+FEOS_EXPORT bool loadFilter(FILTER* fl, char* name)
+{
+	fltr = fl;
+	fltr->fltr_mod = FeOS_LoadARM7(name, &fltr->fifoCh);
+	if(fltr->fltr_mod) {
+		return true;
+	}
+	return false;
+}
+
+FEOS_EXPORT void unloadFilter(FILTER* fl){
+	FeOS_FreeARM7(fl->fltr_mod, fltr->fifoCh);
 }
