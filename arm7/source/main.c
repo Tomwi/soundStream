@@ -72,7 +72,7 @@ void FifoMsgHandler(int num_bytes, void *userdata)
 		break;
 
 	case FIFO_AUDIO_READTMR:
-		fifoSendValue32(fifoChan, (TIMER_DATA(1)-16)&0xFFFF);
+		fifoSendValue32(fifoChan, TIMER_DATA(1));
 		break;
 		/* Only happens when filtering is enabled */
 	case FIFO_AUDIO_COPY:

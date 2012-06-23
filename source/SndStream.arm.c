@@ -268,6 +268,7 @@ FEOS_EXPORT void pauseStream(void)
 		memcpy(&outBuf.buffer[STREAM_BUF_SIZE*bytSmp], &workBuf.buffer[toCopy*bytSmp], toCopy*bytSmp);
 	}
 	outBuf.bufOff = toCopy;
+	outBuf.bufOff %= STREAM_BUF_SIZE;
 	if(workBuf.bufOff) {
 		memmove(workBuf.buffer, &workBuf.buffer[(toCopy%STREAM_BUF_SIZE)*bytSmp*nChans], workBuf.bufOff*bytSmp*nChans);
 	}
