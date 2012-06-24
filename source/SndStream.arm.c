@@ -129,6 +129,10 @@ FEOS_EXPORT int initSoundStreamer(void)
 
 FEOS_EXPORT void enableFiltering(word_t bufmd, bool inBankC)
 {
+	if(activeStream){
+		if(activeStream->state != STREAM_STOP)
+			return;
+	}
 	if(bufmd == SOUNDBUF_0x6020000)
 		pcmBuf = (void*)(0x6020000);
 	else
@@ -141,6 +145,10 @@ FEOS_EXPORT void enableFiltering(word_t bufmd, bool inBankC)
 
 FEOS_EXPORT void disableFiltering(void)
 {
+	if(activeStream){
+		if(activeStream->state != STREAM_STOP)
+			return;
+	}
 	pcmBuf = NULL;
 }
 

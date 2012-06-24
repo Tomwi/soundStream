@@ -22,6 +22,7 @@ int initSoundStreamer(void);
 void deinitSoundStreamer(void);
 
 void enableFiltering(word_t bufmd, bool inBankC);
+void disableFiltering(void);
 bool loadFilter(FILTER* fltr, char* name);
 void unloadFilter(FILTER* fl);
 
