@@ -317,7 +317,7 @@ FEOS_EXPORT int updateStream(void)
 decode:
 		if(activeStream->state != STREAM_WAIT) {
 			int toDec = CLAMP(activeStream->smpNc, 0, (STREAM_BUF_SIZE-workBuf.bufOff));
-			toDec = BIC(toDec, activeStream->lenMask);
+			//toDec = BIC(toDec, activeStream->lenMask);
 			ret = activeStream->cllbcks->onRead(toDec, &workBuf.buffer[workBuf.bufOff*bytSmp*nChans], &activeStream->cllbcks->context);
 		}
 		switch(ret) {
