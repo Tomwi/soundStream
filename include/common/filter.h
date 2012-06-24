@@ -11,7 +11,6 @@ typedef struct {
 	int fifoCh;
 	instance_t fltr_mod;
 	void (*filter)(void* buffer, AUDIO_INFO* inf, int len);
-	FIFO_FLTR_MSG msg;
 }FILTER;
 
 #endif

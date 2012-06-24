@@ -43,5 +43,6 @@ void* getoutBuf(void);
 /* WARNING: use only with samples = 4n */
 void _deInterleave(short *in, short *out, int samples);
 void _8bdeInterleave(s8 *in, s8 *out, int samples);
+void fastCopy(void* out, void* in, int bytes);
 
 #endif /* SND_STREAM_H */

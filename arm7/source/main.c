@@ -77,9 +77,9 @@ void FifoMsgHandler(int num_bytes, void *userdata)
 		/* Only happens when filtering is enabled */
 	case FIFO_AUDIO_COPY:
 		bytSmp = (msg.property);
-		dmaCopy(msg.lBuf, audioBuffer+msg.off*bytSmp, msg.len*bytSmp);
+		dmaCopyWords(0, msg.lBuf, audioBuffer+msg.off*bytSmp, msg.len*bytSmp);
 		if(channels==2)
-			dmaCopy(msg.rBuf, audioBuffer+(msg.off+msg.bufLen)*bytSmp,msg.len*bytSmp);
+			dmaCopyWords(0, msg.rBuf, audioBuffer+(msg.off+msg.bufLen)*bytSmp,msg.len*bytSmp);
 		fifoSendValue32(fifoChan, 1);
 		break;
 	}

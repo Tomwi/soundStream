@@ -41,6 +41,7 @@ typedef struct {
 typedef struct {
 	int state;
 	unsigned int smpNc;
+	unsigned int lenMask;
 	AUDIO_CALLBACKS* cllbcks;
 	AUDIO_INFO  inf;
 } AUDIO_STREAM;
