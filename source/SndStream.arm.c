@@ -37,7 +37,7 @@ void copySamples(s8* in, int samples, int req)
 	int mask = activeStream->lenMask;
 	int total = samples;
 
-	while(samples >= 4) {
+	while(samples > mask) {
 		int toCopy = ((outBuf.bufOff + samples) > STREAM_BUF_SIZE? (STREAM_BUF_SIZE - outBuf.bufOff) : samples);
 		toCopy = BIC(toCopy, mask);
 		if(toCopy) {
@@ -55,15 +55,13 @@ void copySamples(s8* in, int samples, int req)
 					break;
 				} else {
 					if(pcmBuf)
-						msg.rBuf = in + req * bytSmp;
-					else
-						fastCopy(&outBuf.buffer[((STREAM_BUF_SIZE+outBuf.bufOff)*bytSmp)], &in[req*bytSmp], toCopy*bytSmp);
+						msg.rBuf = &in[req*bytSmp];
+					fastCopy(&outBuf.buffer[((STREAM_BUF_SIZE+outBuf.bufOff)*bytSmp)], &in[req*bytSmp], toCopy*bytSmp);
 				}
 			case 1:
 				if(pcmBuf)
 					msg.lBuf = in;
-				else
-					fastCopy(&outBuf.buffer[outBuf.bufOff*bytSmp], in, toCopy*bytSmp);
+				fastCopy(&outBuf.buffer[outBuf.bufOff*bytSmp], in, toCopy*bytSmp);
 				break;
 			}
 
@@ -200,20 +198,27 @@ FEOS_EXPORT int startStream(const char* inf, int idx)
 		}
 		if(activeStream->inf.channelCount <= MAX_N_CHANS) {
 			/* Clear MAIN RAM BUFFERS
-			 * (optional) VRAM BUFFER is cleared by the ARM7
+			* (optional) VRAM BUFFER is cleared by the ARM7
 			*/
 			memset(workBuf.buffer, 0, STREAM_BUF_SIZE*bytSmp*nChans);
 			memset(outBuf.buffer, 0, STREAM_BUF_SIZE*bytSmp*nChans);
+			/* Prefill won't work if msg.buffer isn't set (assuming that filtering is enabled) */
+			msg.buffer 	= (pcmBuf? pcmBuf: outBuf.buffer);
 			if(pcmBuf) {
 				fltrmsg.buffer = pcmBuf;
 				fltrmsg.bufLen = STREAM_BUF_SIZE;
 				fltrmsg.nChans = nChans;
 				fltrmsg.bytSmp = bytSmp;
+				msg.type 	= FIFO_AUDIO_CLEAR;
+				fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
+				while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
+				fifoGetValue32(fifoCh);
 			}
 			workBuf.bufOff = outBuf.bufOff = 0;
 			sampleCount[0] = sampleCount[1] = 0;
+
 			preFill();
-			msg.buffer 	= (pcmBuf? pcmBuf: outBuf.buffer);
+
 			msg.type 	= FIFO_AUDIO_START;
 			msg.property 	= (frequency | (nChans<<16) | ((bytSmp<<18)));
 			msg.bufLen 	= STREAM_BUF_SIZE;
@@ -229,10 +234,10 @@ FEOS_EXPORT int startStream(const char* inf, int idx)
 }
 
 /*
- * Pausing is pretty b0rked:/ Because VRAM isn't accessable by the arm9
- * it's quite a mess to copy left samples to the start of the buffer. Maybe defragmenting
- * should be done by the ARM7?
- */
+* Pausing is pretty b0rked:/ Because VRAM isn't accessable by the arm9
+* it's quite a mess to copy left samples to the start of the buffer. Maybe defragmenting
+* should be done by the ARM7?
+*/
 FEOS_EXPORT void pauseStream(void)
 {
 	msg.type = FIFO_AUDIO_PAUSE;
@@ -242,9 +247,9 @@ FEOS_EXPORT void pauseStream(void)
 	/* This is useless when our sound buffer is in VRAM  */
 	if(!pcmBuf) {
 		/*
-		 * Somewhat b0rked, but the max 3 samples you will lose, well it isn't worth the misalignment
-		 * of outBuf.bufOff it can cause and like you're gonna miss them...
-		 */
+		* Somewhat b0rked, but the max 3 samples you will lose, well it isn't worth the misalignment
+		* of outBuf.bufOff it can cause and like you're gonna miss them...
+		*/
 		int toCopy = BIC((STREAM_BUF_SIZE-activeStream->smpNc), 3) ;
 		int offset = getPlayingSample();
 		if(offset < 0)
@@ -325,7 +330,6 @@ FEOS_EXPORT int updateStream(void)
 decode:
 		if(activeStream->state != STREAM_WAIT) {
 			int toDec = CLAMP(activeStream->smpNc, 0, (STREAM_BUF_SIZE-workBuf.bufOff));
-			//toDec = BIC(toDec, activeStream->lenMask);
 			ret = activeStream->cllbcks->onRead(toDec, &workBuf.buffer[workBuf.bufOff*bytSmp*nChans], &activeStream->cllbcks->context);
 		}
 		switch(ret) {

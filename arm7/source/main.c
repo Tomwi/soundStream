@@ -25,9 +25,6 @@ void FifoMsgHandler(int num_bytes, void *userdata)
 		bytSmp = (msg.property >> 18);
 		fmt = ( (bytSmp == 2)? SOUND_FORMAT_16BIT : SOUND_FORMAT_8BIT );
 		audioBuffer = msg.buffer;
-		/* It seems a VRAM bank for filtering is allocated, clear it */
-		if((int)audioBuffer>=0x6000000)
-			memset(audioBuffer, 0, bytSmp*channels*msg.bufLen);
 
 		if(channels <=2 && channels > 0) {
 			int basetmr = 0x2000000 / (msg.property & 0xFFFF) &~ 1;
@@ -77,9 +74,14 @@ void FifoMsgHandler(int num_bytes, void *userdata)
 		/* Only happens when filtering is enabled */
 	case FIFO_AUDIO_COPY:
 		bytSmp = (msg.property);
-		dmaCopyWords(0, msg.lBuf, audioBuffer+msg.off*bytSmp, msg.len*bytSmp);
+		dmaCopyWords(0, msg.lBuf, msg.buffer+msg.off*bytSmp, msg.len*bytSmp);
 		if(channels==2)
-			dmaCopyWords(0, msg.rBuf, audioBuffer+(msg.off+msg.bufLen)*bytSmp,msg.len*bytSmp);
+			dmaCopyWords(0, msg.rBuf, msg.buffer+(msg.off+msg.bufLen)*bytSmp,msg.len*bytSmp);
+		fifoSendValue32(fifoChan, 1);
+		break;
+	case FIFO_AUDIO_CLEAR:
+		if((int)msg.buffer>=0x6000000)
+			memset(msg.buffer, 0, msg.len);
 		fifoSendValue32(fifoChan, 1);
 		break;
 	}
