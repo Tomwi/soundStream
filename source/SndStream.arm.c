@@ -32,10 +32,42 @@ static int readTimer()
 	return (int)fifoGetValue32(fifoCh);
 }
 
+inline int elapsedSamples(hword_t cur, hword_t prev){
+	int smpPlayed = cur-prev;
+	smpPlayed += (smpPlayed < 0 ? (1<<16) : 0);
+	return smpPlayed;
+}
+
+void copySamplesVRAM(void* lbuf, void* rbuf, int off, int len, bool filter){
+	/* VRAM COPY */
+	msg.type = FIFO_AUDIO_COPY;
+	msg.rBuf = rbuf;
+	msg.lBuf = lbuf;
+	msg.off	 = off;
+	msg.len  = len;
+	msg.property = bytSmp;
+	fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
+	while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
+	fifoGetValue32(fifoCh);
+
+	/* FILTERING */
+	if(pcmBuf && fltr && filter) {
+		if(fltr->fltr_mod) {
+			fltrmsg.msgType 	 = FILTER_REQUEST;
+			fltrmsg.off 	 	 = off;
+			fltrmsg.len 		 = len;
+			fifoSendDatamsg(fltr->fifoCh, sizeof(FIFO_FLTR_MSG), &fltrmsg);
+		}
+	}
+}
+
 void copySamples(s8* in, int samples, int req)
 {
 	int mask = activeStream->lenMask;
 	int total = samples;
+
+	void* lbuf = NULL;
+	void* rbuf = NULL;
 
 	while(samples > mask) {
 		int toCopy = ((outBuf.bufOff + samples) > STREAM_BUF_SIZE? (STREAM_BUF_SIZE - outBuf.bufOff) : samples);
@@ -48,19 +80,11 @@ void copySamples(s8* in, int samples, int req)
 						_deInterleave((short*)in, (short*)&outBuf.buffer[outBuf.bufOff*2], toCopy);
 					else
 						_8bdeInterleave(in, &outBuf.buffer[outBuf.bufOff], toCopy);
-					if(pcmBuf) {
-						msg.lBuf = &outBuf.buffer[outBuf.bufOff*bytSmp];
-						msg.rBuf = &outBuf.buffer[(STREAM_BUF_SIZE+outBuf.bufOff)*bytSmp];
-					}
 					break;
 				} else {
-					if(pcmBuf)
-						msg.rBuf = &in[req*bytSmp];
 					fastCopy(&outBuf.buffer[((STREAM_BUF_SIZE+outBuf.bufOff)*bytSmp)], &in[req*bytSmp], toCopy*bytSmp);
 				}
 			case 1:
-				if(pcmBuf)
-					msg.lBuf = in;
 				fastCopy(&outBuf.buffer[outBuf.bufOff*bytSmp], in, toCopy*bytSmp);
 				break;
 			}
@@ -68,14 +92,10 @@ void copySamples(s8* in, int samples, int req)
 			DC_FlushAll();
 			FeOS_DrainWriteBuffer();
 			if(pcmBuf) {
-				msg.type = FIFO_AUDIO_COPY;
-				/* otherwhise we copy nothing in the prefill */
-				msg.property = bytSmp;
-				msg.off  = outBuf.bufOff;
-				msg.len =  toCopy;
-				fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-				while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
-				fifoGetValue32(fifoCh);
+				lbuf = &outBuf.buffer[outBuf.bufOff*bytSmp];
+				if(nChans==2)
+					rbuf = &outBuf.buffer[(STREAM_BUF_SIZE+outBuf.bufOff)*bytSmp];
+				copySamplesVRAM(lbuf, rbuf, outBuf.bufOff, toCopy, false);
 			}
 			samples -= toCopy;
 			outBuf.bufOff += toCopy;
@@ -87,7 +107,7 @@ void copySamples(s8* in, int samples, int req)
 	if(workBuf.bufOff>0) {
 		memmove(workBuf.buffer, &workBuf.buffer[(total-samples)*nChans*bytSmp], workBuf.bufOff*nChans*bytSmp);
 	}
-	/* send a filter request */
+	/* send a filter request when all samples are copied */
 	if(pcmBuf && fltr) {
 		if(fltr->fltr_mod) {
 			int off = outBuf.bufOff - (total - samples);
@@ -233,62 +253,55 @@ FEOS_EXPORT int startStream(const char* inf, int idx)
 	return 0;
 }
 
-/*
-* Pausing is pretty b0rked:/ Because VRAM isn't accessable by the arm9
-* it's quite a mess to copy left samples to the start of the buffer. Maybe defragmenting
-* should be done by the ARM7?
-*/
 FEOS_EXPORT void pauseStream(void)
 {
 	msg.type = FIFO_AUDIO_PAUSE;
 	fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-
+	while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
+	/* Update smpNc */
+	sampleCount[0] = fifoGetValue32(fifoCh);
+	int smpPlayed = elapsedSamples(sampleCount[0], sampleCount[1]);
+	activeStream->smpNc += smpPlayed;
 	sampleCount[0] = sampleCount[1] = 0;
-	/* This is useless when our sound buffer is in VRAM  */
-	if(!pcmBuf) {
-		/*
-		* Somewhat b0rked, but the max 3 samples you will lose, well it isn't worth the misalignment
-		* of outBuf.bufOff it can cause and like you're gonna miss them...
-		*/
-		int toCopy = BIC((STREAM_BUF_SIZE-activeStream->smpNc), 3) ;
-		int offset = getPlayingSample();
-		if(offset < 0)
-			offset+=STREAM_BUF_SIZE;
 
-		/* Move the not-yet copied samples after the already copied samples, and just pray that it won't wrap */
-		if(workBuf.bufOff) {
-			memmove(&workBuf.buffer[(toCopy%STREAM_BUF_SIZE)*bytSmp*nChans], workBuf.buffer, workBuf.bufOff*bytSmp*nChans);
-		}
+	int toCopy = BIC((STREAM_BUF_SIZE-activeStream->smpNc), activeStream->lenMask) ;
+	int offset = outBuf.bufOff - toCopy;
+	if(offset < 0)
+		offset += STREAM_BUF_SIZE;
 
-		int i;
-		if(bytSmp==2) {
-			s16* out = (s16*)workBuf.buffer;
-			s16* in = (s16*)outBuf.buffer;
-			for(i=0; i<(toCopy*nChans); i++) {
-				out[i] = in[(offset+i)%STREAM_BUF_SIZE];
-			}
-		} else {
-			s8* out = workBuf.buffer;
-			s8* in = outBuf.buffer;
-			for(i=0; i<(toCopy*nChans); i++) {
-				out[i] = in[(offset+i)%STREAM_BUF_SIZE];
-			}
-		}
-
-		memcpy(outBuf.buffer, workBuf.buffer, toCopy*bytSmp);
-		if(nChans == 2) {
-			memcpy(&outBuf.buffer[STREAM_BUF_SIZE*bytSmp], &workBuf.buffer[toCopy*bytSmp], toCopy*bytSmp);
-		}
-		outBuf.bufOff = toCopy;
-		outBuf.bufOff %= STREAM_BUF_SIZE;
-		if(workBuf.bufOff) {
-			memmove(workBuf.buffer, &workBuf.buffer[(toCopy%STREAM_BUF_SIZE)*bytSmp*nChans], workBuf.bufOff*bytSmp*nChans);
-		}
-		activeStream->smpNc = (STREAM_BUF_SIZE - toCopy);
+	/* save unaligned samples */
+	int lostSz = ((STREAM_BUF_SIZE-activeStream->smpNc)&activeStream->lenMask);
+	void* temp = malloc((lostSz+workBuf.bufOff)*bytSmp*nChans);
+	if(temp){
+		memcpy(temp,  &outBuf.buffer[(offset+toCopy) % STREAM_BUF_SIZE], lostSz*bytSmp);
+		if(nChans==2)
+			memcpy(temp+lostSz*bytSmp,  &outBuf.buffer[(offset+toCopy) % STREAM_BUF_SIZE+STREAM_BUF_SIZE], lostSz*bytSmp);
+		memcpy(temp+lostSz*bytSmp*nChans, workBuf.buffer, workBuf.bufOff*bytSmp*nChans);
 	}
-	activeStream->state = STREAM_PAUSE;
+
+	int i;
+	for(i=0; i<nChans; i++){
+		int toEnd = ((offset+toCopy) > STREAM_BUF_SIZE? (STREAM_BUF_SIZE-offset) : toCopy);
+		fastCopy(&workBuf.buffer[STREAM_BUF_SIZE*i*bytSmp], &outBuf.buffer[(STREAM_BUF_SIZE*i + offset)*bytSmp], toEnd*bytSmp);
+		fastCopy(&workBuf.buffer[(STREAM_BUF_SIZE*i+toEnd)*bytSmp], &outBuf.buffer[STREAM_BUF_SIZE*i*bytSmp], (toCopy-toEnd)*bytSmp);
+	}
+
+	fastCopy(outBuf.buffer, workBuf.buffer, toCopy*bytSmp);
+	if(nChans == 2) {
+		fastCopy(&outBuf.buffer[STREAM_BUF_SIZE*bytSmp], &workBuf.buffer[toCopy*bytSmp], toCopy*bytSmp);
+	}
 	DC_FlushAll();
 	FeOS_DrainWriteBuffer();
+	if(pcmBuf)
+		copySamplesVRAM(workBuf.buffer, (nChans == 2?  &workBuf.buffer[toCopy*bytSmp] : NULL), 0, toCopy, true);
+	outBuf.bufOff = toCopy;
+	outBuf.bufOff %= STREAM_BUF_SIZE;
+	if(temp){
+		memcpy(workBuf.buffer, temp, (workBuf.bufOff+lostSz)*bytSmp*nChans);
+		free(temp);
+	}
+	activeStream->smpNc = (STREAM_BUF_SIZE - toCopy);
+	activeStream->state = STREAM_PAUSE;
 }
 
 /* Resume stream, by enabling the (disabled) sound channel(s) */
@@ -318,11 +331,9 @@ FEOS_EXPORT void stopStream(void)
 FEOS_EXPORT int updateStream(void)
 {
 	sampleCount[0] = readTimer();
-	int smpPlayed = sampleCount[0]-sampleCount[1];
-	smpPlayed += (smpPlayed < 0 ? (1<<16) : 0);
-
-	sampleCount[1] = sampleCount[0];
+	int smpPlayed = elapsedSamples(sampleCount[0], sampleCount[1]); 
 	activeStream->smpNc += smpPlayed;
+	sampleCount[1] = sampleCount[0];
 
 	int ret = STREAM_EOF;
 
@@ -371,6 +382,10 @@ decode:
 
 FEOS_EXPORT int getPlayingSample(void)
 {
+	sampleCount[0] = readTimer();
+	int smpPlayed = elapsedSamples(sampleCount[0], sampleCount[1]); 
+	activeStream->smpNc += smpPlayed;
+	sampleCount[1] = sampleCount[0];
 	return (((outBuf.bufOff + activeStream->smpNc) & (STREAM_BUF_SIZE-1)));
 }
 

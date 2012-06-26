@@ -36,7 +36,7 @@ void FifoMsgHandler(int num_bytes, void *userdata)
 			}
 			tmrData = -basetmr;
 
-		case FIFO_AUDIO_RESUME:
+	case FIFO_AUDIO_RESUME:
 
 		{
 			int cS = enterCriticalSection();
@@ -58,10 +58,12 @@ void FifoMsgHandler(int num_bytes, void *userdata)
 			leaveCriticalSection(cS);
 		}
 		fifoSendValue32 (fifoChan, 1);
-	}
-	break;
-	case FIFO_AUDIO_STOP:
+		}
+		break;
 	case FIFO_AUDIO_PAUSE:
+		fifoSendValue32(fifoChan, TIMER_DATA(1));
+	case FIFO_AUDIO_STOP:
+
 		TIMER_CR(0) = 0;
 		TIMER_CR(1) = 0;
 		SCHANNEL_CR(0) = 0;
