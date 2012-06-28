@@ -208,14 +208,12 @@ FEOS_EXPORT int startStream(const char* inf, int idx)
 		bytSmp = ((activeStream->inf.flags&AUDIO_16BIT)? 2 : 1);
 		nChans = activeStream->inf.channelCount;
 		int frequency = activeStream->inf.frequency;
+		/* Deinterleaving needs 4n samples */
 		if(activeStream->inf.flags & AUDIO_INTERLEAVED && nChans == 2)
 			activeStream->lenMask = 0x3;
-		else {
-			if(pcmBuf)
-				activeStream->lenMask = ((4>>(bytSmp>>1))-1);
-			else
-				activeStream->lenMask = ((16>>(bytSmp>>1))-1);
-		}
+		/* Fastcopy needs 16n bytes */
+		else 
+			activeStream->lenMask = ((16>>(bytSmp>>1))-1);
 		if(activeStream->inf.channelCount <= MAX_N_CHANS) {
 			/* Clear MAIN RAM BUFFERS
 			* (optional) VRAM BUFFER is cleared by the ARM7
