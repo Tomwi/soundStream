@@ -24,6 +24,12 @@ hword_t  sampleCount[2];
 
 FIFO_AUD_MSG msg;
 
+inline int waitForFiFoVal(int channel){
+	while (!fifoCheckValue32(channel)) 
+		FeOS_WaitForIRQ(~0);
+	return fifoGetValue32(channel);
+}
+
 static int readTimer()
 {
 	msg.type = FIFO_AUDIO_READTMR;
@@ -33,9 +39,7 @@ static int readTimer()
 }
 
 inline int elapsedSamples(hword_t cur, hword_t prev){
-	int smpPlayed = cur-prev;
-	smpPlayed += (smpPlayed < 0 ? (1<<16) : 0);
-	return smpPlayed;
+	return ((cur|BIT(16))-prev)&(~BIT(16));
 }
 
 void copySamplesVRAM(void* lbuf, void* rbuf, int off, int len, bool filter){
@@ -47,8 +51,7 @@ void copySamplesVRAM(void* lbuf, void* rbuf, int off, int len, bool filter){
 	msg.len  = len;
 	msg.property = bytSmp;
 	fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-	while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
-	fifoGetValue32(fifoCh);
+	waitForFiFoVal(fifoCh);
 
 	/* FILTERING */
 	if(pcmBuf && fltr && filter) {
@@ -229,8 +232,7 @@ FEOS_EXPORT int startStream(const char* inf, int idx)
 				fltrmsg.bytSmp = bytSmp;
 				msg.type 	= FIFO_AUDIO_CLEAR;
 				fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-				while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
-				fifoGetValue32(fifoCh);
+				waitForFiFoVal(fifoCh);
 			}
 			workBuf.bufOff = outBuf.bufOff = 0;
 			sampleCount[0] = sampleCount[1] = 0;
@@ -241,8 +243,7 @@ FEOS_EXPORT int startStream(const char* inf, int idx)
 			msg.property 	= (frequency | (nChans<<16) | ((bytSmp<<18)));
 			msg.bufLen 	= STREAM_BUF_SIZE;
 			fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-			while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
-			if (fifoGetValue32(fifoCh)) {
+			if (waitForFiFoVal(fifoCh)) {
 				activeStream->state = STREAM_PLAY;
 				return 1;
 			}
@@ -255,9 +256,7 @@ FEOS_EXPORT void pauseStream(void)
 {
 	msg.type = FIFO_AUDIO_PAUSE;
 	fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-	while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
-	/* Update smpNc */
-	sampleCount[0] = fifoGetValue32(fifoCh);
+	sampleCount[0] = waitForFiFoVal(fifoCh);;
 	int smpPlayed = elapsedSamples(sampleCount[0], sampleCount[1]);
 	activeStream->smpNc += smpPlayed;
 	sampleCount[0] = sampleCount[1] = 0;
@@ -307,9 +306,7 @@ FEOS_EXPORT void resumeStream(void)
 {
 	msg.type = FIFO_AUDIO_RESUME;
 	fifoSendDatamsg(fifoCh, sizeof(FIFO_AUD_MSG), &msg);
-
-	while (!fifoCheckValue32(fifoCh)) FeOS_WaitForIRQ(~0);
-	if (fifoGetValue32(fifoCh))
+	if (waitForFiFoVal(fifoCh))
 		activeStream->state = STREAM_PLAY;
 }
 
@@ -329,7 +326,7 @@ FEOS_EXPORT void stopStream(void)
 FEOS_EXPORT int updateStream(void)
 {
 	sampleCount[0] = readTimer();
-	int smpPlayed = elapsedSamples(sampleCount[0], sampleCount[1]); 
+	int smpPlayed = elapsedSamples(sampleCount[0], sampleCount[1]);
 	activeStream->smpNc += smpPlayed;
 	sampleCount[1] = sampleCount[0];
 
