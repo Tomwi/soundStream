@@ -38,8 +38,8 @@ static int readTimer()
 	return (int)fifoGetValue32(fifoCh);
 }
 
-inline int elapsedSamples(hword_t cur, hword_t prev){
-	return ((cur|BIT(16))-prev)&(~BIT(16));
+inline hword_t elapsedSamples(hword_t cur, hword_t prev){
+	return ((hword_t)(cur-prev));
 }
 
 void copySamplesVRAM(void* lbuf, void* rbuf, int off, int len, bool filter){
