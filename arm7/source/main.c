@@ -12,6 +12,7 @@ int fifoChan;
 u16 tmrData;
 void* audioBuffer;
 unsigned int channels, bytSmp, fmt;
+void fastCopy(void* out, void* in, int bytes);
 
 void FifoMsgHandler(int num_bytes, void *userdata)
 {
@@ -76,9 +77,9 @@ void FifoMsgHandler(int num_bytes, void *userdata)
 		/* Only happens when filtering is enabled */
 	case FIFO_AUDIO_COPY:
 		bytSmp = (msg.property);
-		dmaCopyWords(0, msg.lBuf, msg.buffer+msg.off*bytSmp, msg.len*bytSmp);
-		if(channels==2)
-			dmaCopyWords(0, msg.rBuf, msg.buffer+(msg.off+msg.bufLen)*bytSmp,msg.len*bytSmp);
+		fastCopy(msg.buffer+msg.off*bytSmp, msg.lBuf, msg.len*bytSmp);
+		if(msg.rBuf)
+			fastCopy(msg.buffer+(msg.off+msg.bufLen)*bytSmp, msg.rBuf, msg.len*bytSmp);
 		fifoSendValue32(fifoChan, 1);
 		break;
 	case FIFO_AUDIO_CLEAR:

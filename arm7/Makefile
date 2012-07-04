@@ -26,9 +26,9 @@ export THIS_MAKEFILE := Makefile
 #---------------------------------------------------------------------------------
 TARGET        := sndStreamStub
 BUILD         := build
-SOURCES       := source
+SOURCES       := source ../common/source
 DATA          := data
-INCLUDES      := include ../include/common
+INCLUDES      := include ../common/include
 
 CONF_DEFINES =
 CONF_ARM7 = 1

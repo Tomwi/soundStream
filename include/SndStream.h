@@ -6,8 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "common/sound.h"
-#include "common/filter.h"
+#include "../common/include/sound.h"
+#include "../common/include/filter.h"
 
 /* Timing */
 #define BUS_CLOCK   		(0x2000000)

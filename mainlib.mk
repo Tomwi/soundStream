@@ -26,9 +26,9 @@ export THIS_MAKEFILE := mainlib.mk
 #---------------------------------------------------------------------------------
 TARGET        := $(shell basename $(CURDIR))
 BUILD         := build
-SOURCES       := source
+SOURCES       := source common/source
 DATA          := data
-INCLUDES      := include include/common
+INCLUDES      := include common/include
 
 CONF_DEFINES = -DBUILD_STREAM
 
