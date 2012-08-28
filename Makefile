@@ -1,12 +1,18 @@
+FEOSMK = $(FEOSSDK)/mk
+
+MANIFEST    := package.manifest
+PACKAGENAME := soundstream
+
 all:
-	@make --no-print-directory -C arm7
-	@make --no-print-directory -f mainlib.mk
+	@$(MAKE) --no-print-directory -C arm7
+	@$(MAKE) --no-print-directory -f mainlib.mk
 
 clean:
-	@make --no-print-directory -C arm7 clean
-	@make --no-print-directory -f mainlib.mk clean
+	@$(MAKE) --no-print-directory -C arm7 clean
+	@$(MAKE) --no-print-directory -f mainlib.mk clean
 
 install:
-	@make --no-print-directory -C arm7 install
-	@make --no-print-directory -f mainlib.mk install
+	@$(MAKE) --no-print-directory -C arm7 install
+	@$(MAKE) --no-print-directory -f mainlib.mk install
 	
+include $(FEOSMK)/packagetop.mk
