@@ -2,6 +2,7 @@ build/
 *.elf
 *.dbg
 *.fx2
+*.fpkg
 *.sh
 *.a
 *.tags*
