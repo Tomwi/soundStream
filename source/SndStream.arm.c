@@ -130,7 +130,7 @@ void preFill(void)
 	int ret = 0;
 	while(activeStream->smpNc > 0) {
 		int toDec = CLAMP(activeStream->smpNc, 0, (STREAM_BUF_SIZE-workBuf.bufOff));
-		ret = activeStream->cllbcks->onRead(toDec, &workBuf.buffer[workBuf.bufOff*bytSmp*nChans], &activeStream->cllbcks->context);
+		ret = activeStream->cllbcks->onRead(&activeStream->inf, toDec, &workBuf.buffer[workBuf.bufOff*bytSmp*nChans], &activeStream->cllbcks->context);
 		if(ret<=0) {
 			break;
 		}
@@ -336,7 +336,7 @@ FEOS_EXPORT int updateStream(void)
 decode:
 		if(activeStream->state != STREAM_WAIT) {
 			int toDec = CLAMP(activeStream->smpNc, 0, (STREAM_BUF_SIZE-workBuf.bufOff));
-			ret = activeStream->cllbcks->onRead(toDec, &workBuf.buffer[workBuf.bufOff*bytSmp*nChans], &activeStream->cllbcks->context);
+			ret = activeStream->cllbcks->onRead(&activeStream->inf, toDec, &workBuf.buffer[workBuf.bufOff*bytSmp*nChans], &activeStream->cllbcks->context);
 		}
 		switch(ret) {
 		case STREAM_ERR:

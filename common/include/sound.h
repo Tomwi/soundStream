@@ -6,6 +6,7 @@
 typedef struct {
 	unsigned int frequency;
 	unsigned int channelCount;
+	unsigned int pos;
 	int flags;
 } AUDIO_INFO;
 
@@ -32,7 +33,7 @@ typedef struct {
 
 typedef struct {
 	int (*onOpen)(const char* , AUDIO_INFO*, void** context);
-	int (*onRead)(int length, void * buf, void * context);
+	int (*onRead)(AUDIO_INFO*, int length, void * buf, void * context);
 	void (*onEof)(void * context);
 	void (*onClose)(void * context);
 	void * context;
