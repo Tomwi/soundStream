@@ -1,5 +1,6 @@
 #include "SndStream.h"
 #include "fifo.h"
+#include <sndlock.h>
 
 #define ARM7_MODULE_PATH "/data/FeOS/arm7/sndStreamStub.fx2"
 #define CLAMP(n,l,u) ((n) = ((n) > (u) ? (u) : ((n)<l ? (l) : (n))))
@@ -7,6 +8,7 @@
 
 int fifoCh;
 instance_t arm7_sndModule;
+sndlock_t soundLock;
 FILTER* fltr;
 
 s8 mainBuf[MAX_N_CHANS * STREAM_BUF_SIZE * 2 * 2];
@@ -141,8 +143,13 @@ void preFill(void)
 
 FEOS_EXPORT int initSoundStreamer(void)
 {
+	if(!SndLock_Acquire("soundStream", &soundLock)) {
+		return 1;
+	}
+
 	arm7_sndModule= FeOS_LoadARM7(ARM7_MODULE_PATH, &fifoCh);
 	if(arm7_sndModule) {
+		SndLock_Release(soundLock);
 		return 1;
 	}
 	return 0;
@@ -183,6 +190,7 @@ FEOS_EXPORT void deinitSoundStreamer(void)
 		free(streamLst);
 		streamLst = NULL;
 	}
+	SndLock_Release(soundLock);
 }
 
 FEOS_EXPORT int createStream(AUDIO_CALLBACKS * cllbck)
