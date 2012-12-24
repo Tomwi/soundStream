@@ -31,6 +31,8 @@ DATA          := data
 INCLUDES      := include common/include
 
 CONF_DEFINES = -DBUILD_STREAM
+CONF_USERLIBS = sndlock
+CONF_LIBS = -lsndlock
 
 include $(FEOSMK)/dynlib.mk
 	
